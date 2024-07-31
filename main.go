@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"syscall"
 )
 
@@ -44,6 +47,8 @@ func runContainer() {
 func runContainerProcess() {
 	fmt.Printf("Inside container: %v\n", os.Args[2:])
 
+	setupCgroups()
+
 	if err := syscall.Sethostname([]byte("my-container")); err != nil {
 		fmt.Printf("Error setting hostname: %v\n", err)
 		os.Exit(1)
@@ -64,6 +69,11 @@ func runContainerProcess() {
 		os.Exit(1)
 	}
 
+	if err := syscall.Mount("tmpfs", "tmp", "tmpfs", 0, ""); err != nil {
+		fmt.Printf("Error mounting tmpfs: %v\n", err)
+		os.Exit(1)
+	}
+
 	cmd := exec.Command(os.Args[2], os.Args[3:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -73,7 +83,33 @@ func runContainerProcess() {
 		fmt.Printf("Error running container command: %v\n", err)
 	}
 
+	if err := syscall.Unmount("tmp", 0); err != nil {
+		fmt.Printf("Error unmounting tmpfs: %v\n", err)
+	}
+
 	if err := syscall.Unmount("proc", 0); err != nil {
 		fmt.Printf("Error unmounting proc: %v\n", err)
 	}
+}
+
+func setupCgroups() {
+	cgroups := "/sys/fs/cgroup/"
+	pids := filepath.Join(cgroups, "pids")
+	containerGroup := filepath.Join(pids, "mycontainer")
+
+	if err := os.Mkdir(containerGroup, 0755); err != nil && !os.IsExist(err) {
+		fmt.Printf("Error creating cgroup: %v\n", err)
+		os.Exit(1)
+	}
+
+	writeFile := func(path, content string) {
+		if err := ioutil.WriteFile(path, []byte(content), 0700); err != nil {
+			fmt.Printf("Error writing to %s: %v\n", path, err)
+			os.Exit(1)
+		}
+	}
+
+	writeFile(filepath.Join(containerGroup, "pids.max"), "20")
+	writeFile(filepath.Join(containerGroup, "notify_on_release"), "1")
+	writeFile(filepath.Join(containerGroup, "cgroup.procs"), strconv.Itoa(os.Getpid()))
 }
