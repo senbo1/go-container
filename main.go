@@ -31,7 +31,8 @@ func runContainer() {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
+		Cloneflags:   syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
+		Unshareflags: syscall.CLONE_NEWNS,
 	}
 
 	if err := cmd.Run(); err != nil {
@@ -42,18 +43,37 @@ func runContainer() {
 
 func runContainerProcess() {
 	fmt.Printf("Inside container: %v\n", os.Args[2:])
-	cmd := exec.Command(os.Args[2], os.Args[3:]...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
 	if err := syscall.Sethostname([]byte("my-container")); err != nil {
 		fmt.Printf("Error setting hostname: %v\n", err)
 		os.Exit(1)
 	}
 
+	if err := syscall.Chroot("/home/user/containerfs"); err != nil {
+		fmt.Printf("Error changing root: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := os.Chdir("/"); err != nil {
+		fmt.Printf("Error changing directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := syscall.Mount("proc", "proc", "proc", 0, ""); err != nil {
+		fmt.Printf("Error mounting proc: %v\n", err)
+		os.Exit(1)
+	}
+
+	cmd := exec.Command(os.Args[2], os.Args[3:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error running container command: %v\n", err)
-		os.Exit(1)
+	}
+
+	if err := syscall.Unmount("proc", 0); err != nil {
+		fmt.Printf("Error unmounting proc: %v\n", err)
 	}
 }
