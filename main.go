@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -103,7 +102,7 @@ func setupCgroups() {
 	}
 
 	writeFile := func(path, content string) {
-		if err := ioutil.WriteFile(path, []byte(content), 0700); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0700); err != nil {
 			fmt.Printf("Error writing to %s: %v\n", path, err)
 			os.Exit(1)
 		}
